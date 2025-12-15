@@ -155,11 +155,11 @@ export const Scoreboard = ({ onBack }: ScoreboardProps) => {
               <div 
                 key={level}
                 className={`text-center p-3 rounded-xl transition-all ${
-                  isCurrentLevel ? 'ring-2 ring-offset-2 scale-105' : ''
+                  isCurrentLevel ? 'scale-105 ring-2 ring-offset-2' : ''
                 }`}
                 style={{ 
                   backgroundColor: `${info.color}20`,
-                  ringColor: isCurrentLevel ? info.color : undefined
+                  ...(isCurrentLevel ? { boxShadow: `0 0 0 2px ${info.color}` } : {})
                 }}
               >
                 <div className="text-3xl mb-1">{info.emoji}</div>

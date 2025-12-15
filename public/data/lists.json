@@ -1,0 +1,22 @@
+{
+  "lists": [
+    {
+      "id": 1,
+      "name": "מילים בסיסיות",
+      "createdAt": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "words": [
+    { "id": 1, "english": "boy", "hebrew": "ילד", "listId": 1 },
+    { "id": 2, "english": "girl", "hebrew": "ילדה", "listId": 1 },
+    { "id": 3, "english": "teacher", "hebrew": "מורה", "listId": 1 },
+    { "id": 4, "english": "student", "hebrew": "תלמיד", "listId": 1 },
+    { "id": 5, "english": "book", "hebrew": "ספר", "listId": 1 },
+    { "id": 6, "english": "pencil", "hebrew": "עיפרון", "listId": 1 },
+    { "id": 7, "english": "table", "hebrew": "שולחן", "listId": 1 },
+    { "id": 8, "english": "chair", "hebrew": "כיסא", "listId": 1 },
+    { "id": 9, "english": "window", "hebrew": "חלון", "listId": 1 },
+    { "id": 10, "english": "door", "hebrew": "דלת", "listId": 1 }
+  ]
+}
+

@@ -1,9 +1,8 @@
 {
   "player": {
-    "name": "",
-    "totalScore": 0,
+    "name": "אלון2",
+    "totalScore": 3,
     "level": "bronze",
-    "gamesPlayed": 0
+    "gamesPlayed": 4
   }
 }
-

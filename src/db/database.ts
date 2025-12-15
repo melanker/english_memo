@@ -1,4 +1,4 @@
-// LocalStorage-based database for GitHub Pages deployment
+// Database using REST API for lists/words and localStorage for player data
 
 export type Word = {
   id: number;
@@ -20,139 +20,191 @@ export type Player = {
   gamesPlayed: number;
 };
 
-type StorageData = {
-  lists: WordList[];
-  words: Word[];
-  player: Player;
-  initialized: boolean;
-};
+// API base URL - use localhost:3001 for dev, or relative path for production
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
 
-const STORAGE_KEY = 'english-teach-data';
+// Fallback to JSON files if API is not available
+const JSON_BASE = import.meta.env.BASE_URL + 'data';
 
-// Get data from localStorage
-const getData = (): StorageData => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  return {
-    lists: [],
-    words: [],
-    player: {
-      name: '',
-      totalScore: 0,
-      level: 'bronze',
-      gamesPlayed: 0
-    },
-    initialized: false
-  };
-};
+// Cache for lists data
+let listsCache: WordList[] = [];
+let wordsCache: Word[] = [];
+let useApi = true;
 
-// Save data to localStorage
-const saveData = (data: StorageData): void => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-};
-
-// Initialize with default data from JSON files
+// Initialize database - fetch lists from API or JSON file
 export const initializeDatabase = async (): Promise<void> => {
-  const data = getData();
-  
-  // Only load defaults if not already initialized
-  if (!data.initialized) {
-    try {
-      const response = await fetch(`${import.meta.env.BASE_URL}data/lists.json`);
-      if (response.ok) {
-        const defaultData = await response.json();
-        data.lists = defaultData.lists || [];
-        data.words = defaultData.words || [];
-        data.initialized = true;
-        saveData(data);
-      }
-    } catch (error) {
-      console.log('No default data found, starting fresh');
-      data.initialized = true;
-      saveData(data);
+  try {
+    // Try API first
+    const response = await fetch(`${API_BASE}/lists`);
+    if (response.ok) {
+      listsCache = await response.json();
+      // Fetch all words
+      const wordsPromises = listsCache.map(async (list) => {
+        const res = await fetch(`${API_BASE}/lists/${list.id}/words`);
+        return res.ok ? res.json() : [];
+      });
+      const wordsArrays = await Promise.all(wordsPromises);
+      wordsCache = wordsArrays.flat();
+      useApi = true;
+      await initializePlayer();
+      return;
     }
+  } catch {
+    // API not available, fall back to JSON
   }
-};
 
-// Generate next ID for a collection
-const getNextId = (items: { id: number }[]): number => {
-  if (items.length === 0) return 1;
-  return Math.max(...items.map(item => item.id)) + 1;
+  // Fallback to JSON files
+  try {
+    const response = await fetch(`${JSON_BASE}/lists.json`);
+    if (response.ok) {
+      const data = await response.json();
+      listsCache = data.lists || [];
+      wordsCache = data.words || [];
+    }
+  } catch (error) {
+    console.error('Failed to load data:', error);
+  }
+  useApi = false;
+  await initializePlayer();
 };
 
 // Word List operations
 export const getAllLists = (): WordList[] => {
-  return getData().lists;
+  return listsCache;
 };
 
 export const getList = (id: number): WordList | undefined => {
-  return getData().lists.find(list => list.id === id);
+  return listsCache.find(list => list.id === id);
 };
 
-export const addList = (name: string): number => {
-  const data = getData();
-  const newList: WordList = {
-    id: getNextId(data.lists),
-    name,
-    createdAt: new Date().toISOString()
-  };
-  data.lists.push(newList);
-  saveData(data);
-  return newList.id;
+export const addList = async (name: string): Promise<number> => {
+  if (!useApi) return -1;
+  
+  const response = await fetch(`${API_BASE}/lists`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name })
+  });
+  
+  if (response.ok) {
+    const newList = await response.json();
+    listsCache.push(newList);
+    return newList.id;
+  }
+  return -1;
 };
 
-export const deleteList = (id: number): void => {
-  const data = getData();
-  data.lists = data.lists.filter(list => list.id !== id);
-  data.words = data.words.filter(word => word.listId !== id);
-  saveData(data);
+export const deleteList = async (id: number): Promise<void> => {
+  if (!useApi) return;
+  
+  await fetch(`${API_BASE}/lists/${id}`, { method: 'DELETE' });
+  listsCache = listsCache.filter(l => l.id !== id);
+  wordsCache = wordsCache.filter(w => w.listId !== id);
 };
 
 // Word operations
 export const getWordsByList = (listId: number): Word[] => {
-  return getData().words.filter(word => word.listId === listId);
+  return wordsCache.filter(word => word.listId === listId);
 };
 
-export const addWord = (english: string, hebrew: string, listId: number): number => {
-  const data = getData();
-  const newWord: Word = {
-    id: getNextId(data.words),
-    english,
-    hebrew,
-    listId
-  };
-  data.words.push(newWord);
-  saveData(data);
-  return newWord.id;
+export const addWord = async (english: string, hebrew: string, listId: number): Promise<number> => {
+  if (!useApi) return -1;
+  
+  const response = await fetch(`${API_BASE}/lists/${listId}/words`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ english, hebrew })
+  });
+  
+  if (response.ok) {
+    const newWord = await response.json();
+    wordsCache.push(newWord);
+    return newWord.id;
+  }
+  return -1;
 };
 
-export const updateWord = (id: number, updates: Partial<Pick<Word, 'english' | 'hebrew'>>): void => {
-  const data = getData();
-  const wordIndex = data.words.findIndex(word => word.id === id);
-  if (wordIndex !== -1) {
-    data.words[wordIndex] = { ...data.words[wordIndex], ...updates };
-    saveData(data);
+export const updateWord = async (id: number, updates: Partial<Pick<Word, 'english' | 'hebrew'>>): Promise<void> => {
+  if (!useApi) return;
+  
+  const response = await fetch(`${API_BASE}/words/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates)
+  });
+  
+  if (response.ok) {
+    const updated = await response.json();
+    const index = wordsCache.findIndex(w => w.id === id);
+    if (index !== -1) wordsCache[index] = updated;
   }
 };
 
-export const deleteWord = (id: number): void => {
-  const data = getData();
-  data.words = data.words.filter(word => word.id !== id);
-  saveData(data);
+export const deleteWord = async (id: number): Promise<void> => {
+  if (!useApi) return;
+  
+  await fetch(`${API_BASE}/words/${id}`, { method: 'DELETE' });
+  wordsCache = wordsCache.filter(w => w.id !== id);
 };
 
-// Player operations
+// Player operations - use API if available, fallback to localStorage
+const PLAYER_STORAGE_KEY = 'english-teach-player';
+
+let playerCache: Player = {
+  name: '',
+  totalScore: 0,
+  level: 'bronze',
+  gamesPlayed: 0
+};
+
+// Load player data during initialization
+export const initializePlayer = async (): Promise<void> => {
+  if (useApi) {
+    try {
+      const response = await fetch(`${API_BASE}/scores`);
+      if (response.ok) {
+        playerCache = await response.json();
+        return;
+      }
+    } catch {
+      // Fall back to localStorage
+    }
+  }
+  
+  // Fallback to localStorage
+  const stored = localStorage.getItem(PLAYER_STORAGE_KEY);
+  if (stored) {
+    playerCache = JSON.parse(stored);
+  }
+};
+
+const savePlayerData = async (player: Player): Promise<void> => {
+  playerCache = player;
+  
+  if (useApi) {
+    try {
+      await fetch(`${API_BASE}/scores`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(player)
+      });
+      return;
+    } catch {
+      // Fall back to localStorage
+    }
+  }
+  
+  localStorage.setItem(PLAYER_STORAGE_KEY, JSON.stringify(player));
+};
+
 export const getPlayer = (): Player => {
-  return getData().player;
+  return playerCache;
 };
 
 export const updatePlayer = (updates: Partial<Player>): Player => {
-  const data = getData();
-  data.player = { ...data.player, ...updates };
-  saveData(data);
-  return data.player;
+  const player = { ...playerCache, ...updates };
+  savePlayerData(player);
+  return player;
 };
 
 export const calculateLevel = (score: number): 'bronze' | 'silver' | 'gold' | 'diamond' => {
@@ -173,56 +225,38 @@ export const getLevelInfo = (level: 'bronze' | 'silver' | 'gold' | 'diamond') =>
 };
 
 export const setPlayerName = (name: string): Player => {
-  const data = getData();
-  data.player.name = name;
-  saveData(data);
-  return data.player;
+  const player = { ...playerCache, name };
+  savePlayerData(player);
+  return player;
 };
 
 export const addScore = (points: number): Player => {
-  const data = getData();
-  data.player.totalScore = Math.max(0, data.player.totalScore + points);
-  data.player.level = calculateLevel(data.player.totalScore);
-  saveData(data);
-  return data.player;
+  const player = { ...playerCache };
+  player.totalScore = Math.max(0, player.totalScore + points);
+  player.level = calculateLevel(player.totalScore);
+  savePlayerData(player);
+  return player;
 };
 
 export const incrementGamesPlayed = (): void => {
-  const data = getData();
-  data.player.gamesPlayed += 1;
-  saveData(data);
+  const player = { ...playerCache };
+  player.gamesPlayed += 1;
+  savePlayerData(player);
 };
 
-// Export data for backup
-export const exportData = (): string => {
-  return JSON.stringify(getData(), null, 2);
-};
-
-export const exportListsJson = (): string => {
-  const data = getData();
-  return JSON.stringify({ lists: data.lists, words: data.words }, null, 2);
-};
-
-export const exportScoresJson = (): string => {
-  const data = getData();
-  return JSON.stringify({ player: data.player }, null, 2);
-};
-
-// Import data from backup
-export const importData = (jsonString: string): boolean => {
-  try {
-    const data = JSON.parse(jsonString) as StorageData;
-    if (data.lists && data.words && data.player) {
-      saveData(data);
-      return true;
+export const resetData = async (): Promise<void> => {
+  if (useApi) {
+    try {
+      await fetch(`${API_BASE}/scores/reset`, { method: 'POST' });
+      playerCache = { name: '', totalScore: 0, level: 'bronze', gamesPlayed: 0 };
+      return;
+    } catch {
+      // Fall back to localStorage
     }
-    return false;
-  } catch {
-    return false;
   }
+  localStorage.removeItem(PLAYER_STORAGE_KEY);
+  playerCache = { name: '', totalScore: 0, level: 'bronze', gamesPlayed: 0 };
 };
 
-// Reset all data
-export const resetData = (): void => {
-  localStorage.removeItem(STORAGE_KEY);
-};
+// Check if API is available
+export const isApiAvailable = (): boolean => useApi;

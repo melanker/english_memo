@@ -218,7 +218,7 @@ export const Game = ({ listId, playerName, onExit }: GameProps) => {
       soundManager.playFart();
       setShowEyalWin(true);
       if (spinTimeoutRef.current) window.clearTimeout(spinTimeoutRef.current);
-      spinTimeoutRef.current = window.setTimeout(() => setShowEyalWin(false), 900);
+      spinTimeoutRef.current = window.setTimeout(() => setShowEyalWin(false), 1500);
 
       setSessionScore(s => s + 1);
       setSessionCorrect(c => c + 1);
